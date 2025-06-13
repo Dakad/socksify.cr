@@ -172,7 +172,7 @@ class Socksify::TCPSOCKSSocket < TCPSocket
     #   * 4 bytes for the IPv4 address
     #   * 1 byte of name length followed by 1–255 bytes for the domain name
     #   * 16 bytes for IPv6 address
-    if Socket.ip? host # to IPv4 address
+    if IPAddress.valid? host # to IPv4 address
       req << "\001" if @@socks_version == "5"
       _ip = Array.pack_to_C host.split(".").map(&.to_i)
       req << _ip
