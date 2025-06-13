@@ -1,52 +1,66 @@
 require "http"
 
-require "./proxy"
+require "./logger"
 
 class Socksify::HTTPClient < ::HTTP::Client
-
-  @@log = DiagnosticLogger.new "http-client", ::Log::Severity::Debug
+  extend Logger
 
   getter proxy_url : String? = nil
 
-  # Determine if HTTP request can skip proxy if failed to connect
-  @skip_proxy : Bool = false
+  # Determine if HTTP request can skip proxy
+  # if failed to connect during the exec_request
+  setter skip_proxy : Bool = false
 
-  def set_proxy(proxy : Proxy = nil)
+  def set_proxy(proxy : Proxy = nil, is_fallback = true)
     socket = @io
     return if socket && !socket.closed?
 
     begin
       Retriable.retry(on: {IO::Error, Socksify::SOCKSError}) do
-        @proxy_url = proxy.proxy_url.not_nil!
         @io = proxy.open(@host, @port, @tls,  **proxy_connection_options)
       end
-    rescue e : IO::Error
-      @@log.fatal "Proxy could not opened : #{e}"
-      abort 100 unless @skip_proxy
-      # @io = nil
+      @proxy_url = proxy.proxy_url.not_nil!
+    rescue e : IO::Error | Socksify::SOCKSError
+      error_msg = "Failed to open connection on proxy '#{proxy.proxy_url}'"
+      unless is_fallback
+        raise Socksify::ProxyError::OpenConnectionError.new(error_msg, e)
+      else
+        raise Socksify::ProxyError::FallbackOpenConnectionError.new(error_msg, e)
+      end
     end
-    @@log.debug "my HTTPClient#set_proxy  proxy.open->io  #{@io.inspect}"
+    HTTPClient.logger.debug "my HTTPClient#set_proxy  proxy.open->io  #{@io.inspect}"
   end
 
-  private def io
+  private def io : IO
     io = @io
-    # @@log.debug "my HTTPClient->io #{io.inspect}"
-    return io if io
+    return io if io && !io.closed?
 
-    set_proxy Proxy.new @proxy_url.not_nil! unless @proxy_url.nil?
-    super #if @skip_proxy
+    begin
+      set_proxy Proxy.new @proxy_url.not_nil!
+    rescue e : ProxyError::OpenConnectionError
+      if Proxy.has_fallback_proxy?
+        set_proxy(Proxy.new(Proxy.config.fallback_proxy_url), is_fallback: true)
+      else
+        raise e
+      end
+    end
+    return @io.not_nil!
+  rescue e : ProxyError
+    @skip_proxy ? return super : raise e
   end
 
-  def self.new(uri : URI, tls = nil, ignore_env = false)
+  def self.new(uri : URI, tls = nil, ignore_config = false, use_fallback = false)
     inst = super(uri, tls)
-    # if !ignore_env && Proxy.behind_proxy?
-    #   inst.set_proxy Proxy.new(*Socksify::Proxy.parse_proxy_url)
-    # end
+    # Fallback proxy configured
+    if use_fallback || (!ignore_config && Proxy.config.fallback_proxy_url?)
+      inst.set_proxy(Proxy.new(Proxy.config.fallback_proxy_url), is_fallback: true)
+    end
+
     inst
   end
 
-  def self.new(uri : URI, tls = nil, ignore_env = false)
-    yield new(uri, tls, ignore_env)
+  def self.new(uri : URI, tls = nil, ignore_config = false, use_fallback = false)
+    yield new(uri, tls, ignore_config, use_fallback)
   end
 
   def proxy_connection_options
