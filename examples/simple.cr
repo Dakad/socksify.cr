@@ -6,7 +6,7 @@ Socksify::Proxy.configure do |config|
   config.fallback_proxy_url = "socks5://127.0.0.1:9150"
 end
 
-  host = "https://ipconfig.me"
+  host = "https://ip.network"
   client = Socksify::HTTPClient.new(URI.parse(host), ignore_config: false)
 
   # proxy = Socksify::Proxy.new("socks://192.111.130.5:17002")
@@ -19,7 +19,7 @@ end
   begin
   # client.set_proxy(proxy)
   client.skip_proxy = true
-  response = client.exec("GET", "/ip", headers: HTTP::Headers{"User-Agent" => "curl/7.80.0"})
+  response = client.exec("GET", "/more", headers: HTTP::Headers{"User-Agent" => "curl/7.80.0"})
   pp response.body
 rescue ex
   pp ex
