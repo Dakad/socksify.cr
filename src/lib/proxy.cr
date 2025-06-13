@@ -70,7 +70,7 @@ class Socksify::Proxy
   def open(host, port, tls = nil, **connection_options)
     dns_timeout = connection_options[:dns_timeout] || Proxy.config.timeout_sec
     connect_timeout = connection_options[:connect_timeout] || Proxy.config.connect_timeout_sec
-    read_timeout = connection_options[:read_timeout] || Proxy.config.timeout_sec
+    read_timeout = connection_options[:read_timeout] || Proxy.config.timeout_sec_to_ts
 
     Proxy.logger.debug "Creating TCPSOCKSSocket"
     socket = TCPSOCKSSocket.new @proxy_host, @proxy_port, dns_timeout, connect_timeout
@@ -124,6 +124,9 @@ class Socksify::Proxy
     property connect_timeout_sec : Int32 = 60
 
     property timeout_sec : Int32 = 60
+    def timeout_sec_to_ts : Time::Span
+      Time::Span.new(seconds: timeout_sec)
+    end
 
     property! fallback_proxy_url : String? = ENV["PROXY_URL"]
     def fallback_proxy_url? : Bool
